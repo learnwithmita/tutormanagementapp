@@ -32,6 +32,7 @@ export default function NewStudentForm({ payers }: { payers: PayerOption[] }) {
   const [payerId, setPayerId] = useState("");
   const [payerSearch, setPayerSearch] = useState("");
   const [confirmDup, setConfirmDup] = useState(false);
+  const [duration, setDuration] = useState("");
 
   const filteredPayers = useMemo(() => {
     const n = payerSearch.trim().toLowerCase();
@@ -197,6 +198,66 @@ export default function NewStudentForm({ payers }: { payers: PayerOption[] }) {
         <label className="label">Notes</label>
         <textarea name="notes" className="input" rows={3} />
       </div>
+
+      {/* First subject (optional) — creates an enrolment so you can schedule
+          lessons right away. */}
+      <fieldset className="card">
+        <legend className="px-1 text-sm font-semibold">
+          First subject{" "}
+          <span className="font-normal text-ink-soft">
+            — optional, but lets you schedule lessons immediately
+          </span>
+        </legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label">Subject</label>
+            <input name="subject" className="input" placeholder="e.g. Science" />
+            {state.fieldErrors?.subject && (
+              <p className="field-error">{state.fieldErrors.subject}</p>
+            )}
+          </div>
+          <div>
+            <label className="label">Level</label>
+            <input name="level" className="input" placeholder="e.g. Sec 2 G3" />
+            {state.fieldErrors?.level && (
+              <p className="field-error">{state.fieldErrors.level}</p>
+            )}
+          </div>
+          <div>
+            <label className="label">Hourly rate ($)</label>
+            <input name="rate" className="input" inputMode="decimal" placeholder="e.g. 50" />
+            {state.fieldErrors?.rate && (
+              <p className="field-error">{state.fieldErrors.rate}</p>
+            )}
+          </div>
+          <div>
+            <label className="label">Duration (minutes)</label>
+            <div className="mb-1 flex gap-1">
+              {[60, 90, 120].map((d) => (
+                <button
+                  type="button"
+                  key={d}
+                  className={`chip ${Number(duration) === d ? "bg-accent-soft text-accent-dark" : ""}`}
+                  onClick={() => setDuration(String(d))}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+            <input
+              name="duration_min"
+              className="input"
+              inputMode="numeric"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              placeholder="e.g. 90"
+            />
+            {state.fieldErrors?.duration_min && (
+              <p className="field-error">{state.fieldErrors.duration_min}</p>
+            )}
+          </div>
+        </div>
+      </fieldset>
 
       <SubmitButton />
     </form>

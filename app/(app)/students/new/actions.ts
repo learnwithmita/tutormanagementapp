@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireUserId } from "@/lib/auth";
+import { parseDollarsToCents } from "@/lib/money";
 import type { FormState } from "@/lib/forms";
 import type { BillingBasis, BillingCycle, TeachingMode } from "@/lib/database.types";
 
@@ -31,8 +32,26 @@ export async function createStudent(
   const mode = String(formData.get("default_mode") ?? "STUDENT_HOME") as TeachingMode;
   const confirmDup = formData.get("confirm_duplicate") === "1";
 
+  // Optional first subject (enrolment) so the student is schedulable right away.
+  const subject = String(formData.get("subject") ?? "").trim();
+  const level = String(formData.get("level") ?? "").trim();
+  const rateRaw = String(formData.get("rate") ?? "").trim();
+  const durationRaw = String(formData.get("duration_min") ?? "").trim();
+  const wantsEnrollment =
+    subject !== "" || level !== "" || rateRaw !== "" || durationRaw !== "";
+  const rateCents = parseDollarsToCents(rateRaw);
+  const durationMin = Number(durationRaw);
+
   const fieldErrors: Record<string, string> = {};
   if (!name) fieldErrors.name = "Student name is required";
+  if (wantsEnrollment) {
+    if (!subject) fieldErrors.subject = "Subject is required";
+    if (!level) fieldErrors.level = "Level is required";
+    if (rateCents == null || rateCents <= 0)
+      fieldErrors.rate = "Enter an hourly rate greater than $0";
+    if (!Number.isInteger(durationMin) || durationMin <= 0)
+      fieldErrors.duration_min = "Enter a duration in minutes";
+  }
   if (payerMode === "existing" && !existingPayerId) {
     fieldErrors.payer_id = "Choose a payer or add a new one";
   }
@@ -101,6 +120,18 @@ export async function createStudent(
 
   if (error || !student) {
     return { ok: false, error: "Something went wrong — nothing was saved. Try again." };
+  }
+
+  // Create the first enrolment so the student can be scheduled immediately.
+  if (wantsEnrollment) {
+    await supabase.from("enrollments").insert({
+      tutor_id: tutorId,
+      student_id: student.id,
+      subject,
+      level,
+      default_rate_cents: rateCents!,
+      default_duration_min: durationMin,
+    });
   }
 
   redirect(`/students/${student.id}?added=1`);

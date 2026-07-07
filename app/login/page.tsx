@@ -34,8 +34,15 @@ function LoginForm() {
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-sm px-4">
-      <h1 className="mb-4 text-xl font-semibold">Tutor Admin — Log in</h1>
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+      <div className="mb-6 text-center">
+        <div className="text-2xl font-semibold tracking-tight">
+          Tutor<span className="text-accent">Admin</span>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">Welcome back — please log in.</p>
+      </div>
+      <div className="card">
       {error && <div className="banner banner-error mb-3">{error}</div>}
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
@@ -70,12 +77,14 @@ function LoginForm() {
           {busy ? "Logging in…" : "Log in"}
         </button>
       </form>
-      <p className="mt-4 text-sm">
+      </div>
+      <p className="mt-4 text-center text-sm text-ink-soft">
         No account?{" "}
-        <Link href="/signup" className="underline">
+        <Link href="/signup" className="font-medium text-accent">
           Sign up
         </Link>
       </p>
+      </div>
     </div>
   );
 }

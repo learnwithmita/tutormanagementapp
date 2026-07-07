@@ -22,7 +22,7 @@ export default async function AppLayout({
   return (
     <div className="min-h-screen">
       <Nav />
-      <main className="mx-auto max-w-5xl px-3 py-4 pb-20 sm:pb-4">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-6 pb-28 sm:pb-10">{children}</main>
     </div>
   );
 }

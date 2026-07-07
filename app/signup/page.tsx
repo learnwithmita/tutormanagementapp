@@ -54,8 +54,15 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="mx-auto mt-16 max-w-sm px-4">
-      <h1 className="mb-4 text-xl font-semibold">Create account</h1>
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+      <div className="mb-6 text-center">
+        <div className="text-2xl font-semibold tracking-tight">
+          Tutor<span className="text-accent">Admin</span>
+        </div>
+        <p className="mt-1 text-sm text-ink-soft">Create your account.</p>
+      </div>
+      <div className="card">
       {error && <div className="banner banner-error mb-3">{error}</div>}
       {info && <div className="banner banner-success mb-3">{info}</div>}
       <form onSubmit={onSubmit} className="space-y-3">
@@ -105,12 +112,14 @@ export default function SignupPage() {
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>
-      <p className="mt-4 text-sm">
+      </div>
+      <p className="mt-4 text-center text-sm text-ink-soft">
         Already have an account?{" "}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="font-medium text-accent">
           Log in
         </Link>
       </p>
+      </div>
     </div>
   );
 }

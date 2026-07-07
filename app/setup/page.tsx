@@ -17,11 +17,15 @@ export default function SetupPage() {
   const [state, formAction] = useFormState(completeSetup, emptyFormState);
 
   return (
-    <div className="mx-auto mt-16 max-w-md px-4">
-      <h1 className="mb-1 text-xl font-semibold">Welcome — quick setup</h1>
-      <p className="mb-4 text-sm text-gray-600">
-        Tell us who you are. You can change these later in Settings.
-      </p>
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="w-full max-w-md">
+      <div className="mb-6 text-center">
+        <div className="text-2xl font-semibold tracking-tight">Welcome 👋</div>
+        <p className="mt-1 text-sm text-ink-soft">
+          A couple of details to get started. You can change these later in Settings.
+        </p>
+      </div>
+      <div className="card">
       {state.error && (
         <div className="banner banner-error mb-3">{state.error}</div>
       )}
@@ -52,6 +56,8 @@ export default function SetupPage() {
         </div>
         <SubmitButton />
       </form>
+      </div>
+      </div>
     </div>
   );
 }
