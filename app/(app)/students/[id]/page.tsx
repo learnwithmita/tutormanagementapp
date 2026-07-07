@@ -15,7 +15,7 @@ import RecurringSection, {
   type EnrollmentLite,
 } from "./RecurringSection";
 import LessonStatusBadge from "@/components/LessonStatusBadge";
-import type { StudentSummary } from "@/lib/database.types";
+import FinancialSummary from "./FinancialSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -130,15 +130,6 @@ export default async function StudentProfile({
     .maybeSingle();
   const payerBalance = balances?.balance_cents ?? 0;
 
-  const { data: summaryData } = await supabase.rpc("v_student_summary", {
-    p_student: studentId,
-    p_from: "2000-01-01",
-    p_to: nowIso.slice(0, 10),
-  });
-  const summary: StudentSummary | undefined = Array.isArray(summaryData)
-    ? summaryData[0]
-    : summaryData;
-
   return (
     <div className="space-y-6">
       {searchParams.added && (
@@ -249,37 +240,10 @@ export default async function StudentProfile({
         )}
       </section>
 
-      {/* Financial summary (all time) */}
+      {/* Financial summary */}
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Financial summary (all time)</h2>
-        {summary ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="Lessons" value={String(summary.lesson_count)} />
-            <Stat label="Teaching hours" value={formatHours(summary.teaching_hours)} />
-            <Stat label="Earned" value={formatMoney(summary.earned_income_cents)} />
-            <Stat label="Billed" value={formatMoney(summary.billed_cents)} />
-            <Stat label="Paid" value={formatMoney(summary.paid_cents)} />
-            <Stat
-              label="Outstanding"
-              value={formatMoney(summary.outstanding_cents)}
-              red={summary.outstanding_cents > 0}
-            />
-            <div className="col-span-2 sm:col-span-3">
-              <span className="text-xs text-gray-500">Rates used: </span>
-              {(summary.distinct_rates_cents ?? []).length === 0 ? (
-                <span className="text-xs text-gray-400">—</span>
-              ) : (
-                summary.distinct_rates_cents.map((r) => (
-                  <span key={r} className="chip mr-1">
-                    {formatMoney(r)}/h
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-600">No financial activity yet.</p>
-        )}
+        <h2 className="mb-2 text-lg font-semibold">Financial summary</h2>
+        <FinancialSummary studentId={student.id} />
         <p className="mt-2 text-xs text-gray-500">
           See the{" "}
           <Link href={`/money/payers/${student.payer_id}`} className="underline">
