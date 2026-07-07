@@ -1,0 +1,259 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { formatMoney } from "@/lib/money";
+import {
+  formatLessonRange,
+  formatHours,
+  MODE_LABELS,
+  mapsUrl,
+} from "@/lib/format";
+import StudentHeader from "./StudentHeader";
+import EnrollmentsSection, { type EnrollmentRow } from "./EnrollmentsSection";
+import LessonStatusBadge from "@/components/LessonStatusBadge";
+import type { StudentSummary } from "@/lib/database.types";
+
+export const dynamic = "force-dynamic";
+
+export default async function StudentProfile({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { added?: string };
+}) {
+  const supabase = await createClient();
+  const studentId = params.id;
+
+  const { data: student } = await supabase
+    .from("students")
+    .select("*, payer:payers(id,name)")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  if (!student) notFound();
+  const payer = Array.isArray((student as any).payer)
+    ? (student as any).payer[0]
+    : (student as any).payer;
+
+  const { data: enrollments } = await supabase
+    .from("enrollments")
+    .select("*")
+    .eq("student_id", studentId)
+    .order("archived_at", { nullsFirst: true })
+    .order("created_at");
+
+  const enrollmentIds = (enrollments ?? []).map((e) => e.id);
+  const nameByEnrollment = new Map(
+    (enrollments ?? []).map((e) => [e.id, `${e.level} ${e.subject}`]),
+  );
+
+  const { data: lessons } = enrollmentIds.length
+    ? await supabase
+        .from("lessons")
+        .select("id,starts_at,duration_min,rate_cents,status,mode,notes,enrollment_id")
+        .in("enrollment_id", enrollmentIds)
+        .order("starts_at", { ascending: false })
+    : { data: [] as any[] };
+
+  const nowIso = new Date().toISOString();
+  const upcoming = (lessons ?? [])
+    .filter((l) => l.status === "SCHEDULED" && l.starts_at >= nowIso)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const history = (lessons ?? []).filter(
+    (l) => !(l.status === "SCHEDULED" && l.starts_at >= nowIso),
+  );
+
+  // Future SCHEDULED count per enrollment (for the archive dialog).
+  const futureCount = new Map<string, number>();
+  for (const l of lessons ?? []) {
+    if (l.status === "SCHEDULED" && l.starts_at >= nowIso) {
+      futureCount.set(l.enrollment_id, (futureCount.get(l.enrollment_id) ?? 0) + 1);
+    }
+  }
+
+  const enrollmentRows: EnrollmentRow[] = (enrollments ?? []).map((e) => ({
+    id: e.id,
+    subject: e.subject,
+    level: e.level,
+    rateCents: e.default_rate_cents,
+    durationMin: e.default_duration_min,
+    archived: e.archived_at != null,
+    futureScheduled: futureCount.get(e.id) ?? 0,
+  }));
+
+  const { data: balances } = await supabase
+    .from("v_payer_balances")
+    .select("balance_cents")
+    .eq("payer_id", student.payer_id)
+    .maybeSingle();
+  const payerBalance = balances?.balance_cents ?? 0;
+
+  const { data: summaryData } = await supabase.rpc("v_student_summary", {
+    p_student: studentId,
+    p_from: "2000-01-01",
+    p_to: nowIso.slice(0, 10),
+  });
+  const summary: StudentSummary | undefined = Array.isArray(summaryData)
+    ? summaryData[0]
+    : summaryData;
+
+  return (
+    <div className="space-y-6">
+      {searchParams.added && (
+        <div className="banner banner-success">Student added.</div>
+      )}
+
+      <StudentHeader
+        student={{
+          id: student.id,
+          name: student.name,
+          school: student.school,
+          address: student.address,
+          notes: student.notes,
+          mode: student.default_mode,
+          archived: student.archived_at != null,
+        }}
+        payer={{ id: payer?.id, name: payer?.name ?? "—" }}
+        payerBalanceCents={payerBalance}
+      />
+
+      {/* Enrollments */}
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Enrolments</h2>
+        <EnrollmentsSection studentId={student.id} rows={enrollmentRows} />
+      </section>
+
+      {/* Upcoming lessons */}
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Upcoming lessons</h2>
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-gray-600">No upcoming lessons.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Subject</th>
+                <th>Mode</th>
+                <th className="text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {upcoming.map((l) => (
+                <tr key={l.id}>
+                  <td>{formatLessonRange(l.starts_at, l.duration_min)}</td>
+                  <td>{nameByEnrollment.get(l.enrollment_id)}</td>
+                  <td>{MODE_LABELS[l.mode]}</td>
+                  <td className="text-right">
+                    {formatMoney(Math.round((l.rate_cents * l.duration_min) / 60))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* Lesson history */}
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Lesson history</h2>
+        {history.length === 0 ? (
+          <p className="text-sm text-gray-600">No past lessons yet.</p>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th className="text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((l) => (
+                <tr key={l.id}>
+                  <td>{formatLessonRange(l.starts_at, l.duration_min)}</td>
+                  <td>{nameByEnrollment.get(l.enrollment_id)}</td>
+                  <td>
+                    <LessonStatusBadge status={l.status} />
+                  </td>
+                  <td className="max-w-xs truncate text-xs text-gray-600">
+                    {l.notes}
+                  </td>
+                  <td className="text-right">
+                    {l.status === "CANCELLED_FREE"
+                      ? "—"
+                      : formatMoney(
+                          Math.round((l.rate_cents * l.duration_min) / 60),
+                        )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* Financial summary (all time) */}
+      <section>
+        <h2 className="mb-2 text-lg font-semibold">Financial summary (all time)</h2>
+        {summary ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="Lessons" value={String(summary.lesson_count)} />
+            <Stat label="Teaching hours" value={formatHours(summary.teaching_hours)} />
+            <Stat label="Earned" value={formatMoney(summary.earned_income_cents)} />
+            <Stat label="Billed" value={formatMoney(summary.billed_cents)} />
+            <Stat label="Paid" value={formatMoney(summary.paid_cents)} />
+            <Stat
+              label="Outstanding"
+              value={formatMoney(summary.outstanding_cents)}
+              red={summary.outstanding_cents > 0}
+            />
+            <div className="col-span-2 sm:col-span-3">
+              <span className="text-xs text-gray-500">Rates used: </span>
+              {(summary.distinct_rates_cents ?? []).length === 0 ? (
+                <span className="text-xs text-gray-400">—</span>
+              ) : (
+                summary.distinct_rates_cents.map((r) => (
+                  <span key={r} className="chip mr-1">
+                    {formatMoney(r)}/h
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-600">No financial activity yet.</p>
+        )}
+        <p className="mt-2 text-xs text-gray-500">
+          See the{" "}
+          <Link href={`/money/payers/${student.payer_id}`} className="underline">
+            payer ledger
+          </Link>{" "}
+          for full billing history.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  red,
+}: {
+  label: string;
+  value: string;
+  red?: boolean;
+}) {
+  return (
+    <div className="card">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={`text-lg font-semibold ${red ? "text-red-700" : ""}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
