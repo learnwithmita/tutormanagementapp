@@ -31,6 +31,12 @@ export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+// Amount digits WITHOUT a currency sign, for templates that already contain a
+// literal "$" before the placeholder ("$150", "$112.50"). Negative keeps sign.
+export function amountDigits(cents: number): string {
+  return formatMoney(cents).replace("$", "");
+}
+
 // A lesson's billable amount. MUST match lesson_amount_cents() in SQL:
 // round(rate_cents * duration_min / 60) to the nearest cent.
 export function lessonAmountCents(durationMin: number, rateCents: number): number {
