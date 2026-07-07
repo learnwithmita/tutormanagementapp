@@ -10,6 +10,10 @@ import {
 } from "@/lib/format";
 import StudentHeader from "./StudentHeader";
 import EnrollmentsSection, { type EnrollmentRow } from "./EnrollmentsSection";
+import RecurringSection, {
+  type SlotRow,
+  type EnrollmentLite,
+} from "./RecurringSection";
 import LessonStatusBadge from "@/components/LessonStatusBadge";
 import type { StudentSummary } from "@/lib/database.types";
 
@@ -51,9 +55,20 @@ export default async function StudentProfile({
   const { data: lessons } = enrollmentIds.length
     ? await supabase
         .from("lessons")
-        .select("id,starts_at,duration_min,rate_cents,status,mode,notes,enrollment_id")
+        .select(
+          "id,starts_at,duration_min,rate_cents,status,mode,notes,enrollment_id,recurring_schedule_id",
+        )
         .in("enrollment_id", enrollmentIds)
         .order("starts_at", { ascending: false })
+    : { data: [] as any[] };
+
+  // Active recurring slots for this student's enrollments.
+  const { data: slotsData } = enrollmentIds.length
+    ? await supabase
+        .from("recurring_schedules")
+        .select("id,enrollment_id,day_of_week,start_time,duration_min")
+        .in("enrollment_id", enrollmentIds)
+        .eq("active", true)
     : { data: [] as any[] };
 
   const nowIso = new Date().toISOString();
@@ -81,6 +96,32 @@ export default async function StudentProfile({
     archived: e.archived_at != null,
     futureScheduled: futureCount.get(e.id) ?? 0,
   }));
+
+  // Recurring slots + their future SCHEDULED counts (for the delete dialog).
+  const futureBySchedule = new Map<string, number>();
+  for (const l of lessons ?? []) {
+    if (l.status === "SCHEDULED" && l.starts_at >= nowIso && l.recurring_schedule_id) {
+      futureBySchedule.set(
+        l.recurring_schedule_id,
+        (futureBySchedule.get(l.recurring_schedule_id) ?? 0) + 1,
+      );
+    }
+  }
+  const slots: SlotRow[] = (slotsData ?? []).map((s: any) => ({
+    id: s.id,
+    enrollmentId: s.enrollment_id,
+    dayOfWeek: s.day_of_week,
+    startTime: s.start_time,
+    durationMin: s.duration_min,
+    futureCount: futureBySchedule.get(s.id) ?? 0,
+  }));
+  const activeEnrollmentsLite: EnrollmentLite[] = (enrollments ?? [])
+    .filter((e) => e.archived_at == null)
+    .map((e) => ({
+      id: e.id,
+      label: `${e.level} ${e.subject}`,
+      defaultDuration: e.default_duration_min,
+    }));
 
   const { data: balances } = await supabase
     .from("v_payer_balances")
@@ -123,6 +164,18 @@ export default async function StudentProfile({
         <h2 className="mb-2 text-lg font-semibold">Enrolments</h2>
         <EnrollmentsSection studentId={student.id} rows={enrollmentRows} />
       </section>
+
+      {/* Recurring slots */}
+      {activeEnrollmentsLite.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold">Recurring slots</h2>
+          <RecurringSection
+            studentId={student.id}
+            enrollments={activeEnrollmentsLite}
+            slots={slots}
+          />
+        </section>
+      )}
 
       {/* Upcoming lessons */}
       <section>

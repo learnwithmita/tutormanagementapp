@@ -30,3 +30,9 @@ export function parseDollarsToCents(input: string): number | null {
 export function centsToInput(cents: number): string {
   return (cents / 100).toFixed(2);
 }
+
+// A lesson's billable amount. MUST match lesson_amount_cents() in SQL:
+// round(rate_cents * duration_min / 60) to the nearest cent.
+export function lessonAmountCents(durationMin: number, rateCents: number): number {
+  return Math.round((rateCents * durationMin) / 60);
+}
