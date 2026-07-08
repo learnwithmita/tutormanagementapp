@@ -131,3 +131,100 @@ begin
 
   raise notice 'Seed complete for tutor %.', v_tutor;
 end$$;
+
+-- =============================================================================
+-- Progress (Milestone 8) seed. Separate idempotent block so it can be run even
+-- if the base seed was applied earlier. Builds a Mathematics syllabus against
+-- Amy's existing enrolment (so the Progress/In-depth tabs light up) plus a
+-- small English syllabus for Ben, assorted work items (a PRACTICE in DONE and
+-- one in MARKED — the marking queue), and papers (scored, unscored, a
+-- duplicate-attempt pair, and one at a different level).
+-- =============================================================================
+do $$
+declare
+  v_tutor    uuid;
+  v_amy_math uuid;  -- Amy's Math enrolment
+  v_amy_lvl  text;
+  v_amy_sub  text;
+  v_ben_eng  uuid;  -- Ben's English enrolment
+  v_ben_lvl  text;
+  v_ben_sub  text;
+  v_algebra  uuid;
+  v_geometry uuid;
+  v_fractions uuid;
+begin
+  select id into v_tutor from tutors order by created_at desc limit 1;
+  if v_tutor is null then return; end if;
+
+  select e.id, e.level, e.subject into v_amy_math, v_amy_lvl, v_amy_sub
+  from enrollments e join students s on s.id = e.student_id
+  where e.tutor_id = v_tutor and s.name = 'Amy Lim' and e.subject = 'Math'
+  order by e.created_at limit 1;
+  if v_amy_math is null then
+    raise notice 'Base seed not present — run the base seed first.';
+    return;
+  end if;
+
+  if exists (select 1 from topics where tutor_id = v_tutor and lower(name) = 'algebra' and level = v_amy_lvl and subject = v_amy_sub) then
+    raise notice 'Progress already seeded — nothing to do.';
+    return;
+  end if;
+
+  select e.id, e.level, e.subject into v_ben_eng, v_ben_lvl, v_ben_sub
+  from enrollments e join students s on s.id = e.student_id
+  where e.tutor_id = v_tutor and s.name = 'Ben Lim' and e.subject = 'English'
+  order by e.created_at limit 1;
+
+  -- Mathematics syllabus (6 topics) for Amy's level/subject.
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Algebra',    0) returning id into v_algebra;
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Geometry',   1) returning id into v_geometry;
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Statistics', 2);
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Fractions',  3) returning id into v_fractions;
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Ratio',      4);
+  insert into topics (tutor_id, level, subject, name, sort_order) values
+    (v_tutor, v_amy_lvl, v_amy_sub, 'Percentage', 5);
+
+  -- Amy: 3 topics checked.
+  insert into topic_checks (tutor_id, enrollment_id, topic_id, checked, checked_at, remark) values
+    (v_tutor, v_amy_math, v_algebra,   true, current_date - 20, 'Strong'),
+    (v_tutor, v_amy_math, v_geometry,  true, current_date - 12, null),
+    (v_tutor, v_amy_math, v_fractions, true, current_date - 4,  'Careless slips');
+
+  -- Work items: notes in progress, a PRACTICE in DONE, a PRACTICE in MARKED.
+  insert into work_items (tutor_id, enrollment_id, type, topic_id, title, status, started_at)
+    values (v_tutor, v_amy_math, 'NOTES', v_algebra, 'Summary notes', 'IN_PROGRESS', current_date - 5);
+  insert into work_items (tutor_id, enrollment_id, type, topic_id, title, status, started_at, updated_at)
+    values (v_tutor, v_amy_math, 'PRACTICE', v_algebra, 'TYS Ex 4B', 'DONE', current_date - 3, now() - interval '3 days');
+  insert into work_items (tutor_id, enrollment_id, type, topic_id, title, status, started_at, updated_at)
+    values (v_tutor, v_amy_math, 'PRACTICE', v_geometry, 'Angles worksheet', 'MARKED', current_date - 6, now() - interval '2 days');
+
+  -- Papers: completed+scored, marked+unscored, a duplicate-attempt pair, and
+  -- one at a different level from the enrolment.
+  insert into practice_papers (tutor_id, enrollment_id, school, level, exam_type, year, status, started_at, completed_at, score, max_score)
+    values (v_tutor, v_amy_math, 'Bukit View Sec', v_amy_lvl, 'Mid-Year', 2024, 'COMPLETED', current_date - 30, current_date - 28, 38, 50);
+  insert into practice_papers (tutor_id, enrollment_id, school, level, exam_type, year, status, started_at, updated_at)
+    values (v_tutor, v_amy_math, 'Bukit View Sec', v_amy_lvl, 'Prelim', 2025, 'MARKED', current_date - 5, now() - interval '1 day');
+  insert into practice_papers (tutor_id, enrollment_id, school, level, exam_type, year, status, started_at, completed_at, score, max_score) values
+    (v_tutor, v_amy_math, 'Riverside Sec', v_amy_lvl, 'WA1', 2025, 'COMPLETED', current_date - 40, current_date - 39, 20, 25),
+    (v_tutor, v_amy_math, 'Riverside Sec', v_amy_lvl, 'WA1', 2025, 'COMPLETED', current_date - 18, current_date - 17, 23, 25);
+  insert into practice_papers (tutor_id, enrollment_id, school, level, exam_type, year, status, started_at, completed_at, score, max_score)
+    values (v_tutor, v_amy_math, 'Riverside Sec', 'Sec 1', 'WA2', 2024, 'COMPLETED', current_date - 60, current_date - 59, 44, 50);
+
+  -- Ben: a small English syllabus so a second student shows progress.
+  if v_ben_eng is not null then
+    insert into topics (tutor_id, level, subject, name, sort_order) values
+      (v_tutor, v_ben_lvl, v_ben_sub, 'Comprehension', 0),
+      (v_tutor, v_ben_lvl, v_ben_sub, 'Composition',   1),
+      (v_tutor, v_ben_lvl, v_ben_sub, 'Oral',          2);
+    insert into topic_checks (tutor_id, enrollment_id, topic_id, checked, checked_at)
+    select v_tutor, v_ben_eng, t.id, true, current_date - 7
+    from topics t where t.tutor_id = v_tutor and t.level = v_ben_lvl and t.subject = v_ben_sub and t.name = 'Comprehension';
+  end if;
+
+  raise notice 'Progress seed complete for tutor %.', v_tutor;
+end$$;

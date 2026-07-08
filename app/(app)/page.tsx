@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { todaySGT } from "@/lib/format";
 import { toLessonVM, LESSON_SELECT, type LessonVM } from "@/lib/lesson-vm";
 import LessonCard from "@/components/LessonCard";
+import MarkingQueuePanel from "@/components/MarkingQueuePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,10 @@ export default async function ThisWeekPage() {
           })}
         </div>
       )}
+
+      <div className="mt-8">
+        <MarkingQueuePanel limit={10} showViewAll />
+      </div>
     </div>
   );
 }

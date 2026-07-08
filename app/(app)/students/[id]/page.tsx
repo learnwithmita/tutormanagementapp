@@ -16,6 +16,10 @@ import RecurringSection, {
 } from "./RecurringSection";
 import LessonStatusBadge from "@/components/LessonStatusBadge";
 import FinancialSummary from "./FinancialSummary";
+import ProgressTab from "./ProgressTab";
+import InDepthTab from "./InDepthTab";
+
+type EnrollmentTab = { id: string; level: string; subject: string };
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +28,13 @@ export default async function StudentProfile({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { added?: string };
+  searchParams: { added?: string; tab?: string; topic?: string; item?: string };
 }) {
   const supabase = await createClient();
   const studentId = params.id;
+  const tab = searchParams.tab === "progress" || searchParams.tab === "indepth"
+    ? searchParams.tab
+    : "overview";
 
   const { data: student } = await supabase
     .from("students")
@@ -52,7 +59,7 @@ export default async function StudentProfile({
     (enrollments ?? []).map((e) => [e.id, `${e.level} ${e.subject}`]),
   );
 
-  const { data: lessons } = enrollmentIds.length
+  const { data: lessons } = tab === "overview" && enrollmentIds.length
     ? await supabase
         .from("lessons")
         .select(
@@ -63,7 +70,7 @@ export default async function StudentProfile({
     : { data: [] as any[] };
 
   // Active recurring slots for this student's enrollments.
-  const { data: slotsData } = enrollmentIds.length
+  const { data: slotsData } = tab === "overview" && enrollmentIds.length
     ? await supabase
         .from("recurring_schedules")
         .select("id,enrollment_id,day_of_week,start_time,duration_min")
@@ -130,6 +137,19 @@ export default async function StudentProfile({
     .maybeSingle();
   const payerBalance = balances?.balance_cents ?? 0;
 
+  const activeEnrollmentTabs: EnrollmentTab[] = (enrollments ?? [])
+    .filter((e) => e.archived_at == null)
+    .map((e) => ({ id: e.id, level: e.level, subject: e.subject }));
+  const pastEnrollmentTabs: EnrollmentTab[] = (enrollments ?? [])
+    .filter((e) => e.archived_at != null)
+    .map((e) => ({ id: e.id, level: e.level, subject: e.subject }));
+
+  const tabs = [
+    { key: "overview", label: "Overview" },
+    { key: "progress", label: "Progress" },
+    { key: "indepth", label: "In-depth" },
+  ] as const;
+
   return (
     <div className="space-y-6">
       {searchParams.added && (
@@ -150,6 +170,42 @@ export default async function StudentProfile({
         payerBalanceCents={payerBalance}
       />
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-line">
+        {tabs.map((t) => (
+          <Link
+            key={t.key}
+            href={t.key === "overview" ? `/students/${studentId}` : `/students/${studentId}?tab=${t.key}`}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              tab === t.key
+                ? "border-accent text-accent"
+                : "border-transparent text-ink-soft hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "progress" && (
+        <ProgressTab
+          studentId={studentId}
+          activeEnrollments={activeEnrollmentTabs}
+          pastEnrollments={pastEnrollmentTabs}
+        />
+      )}
+
+      {tab === "indepth" && (
+        <InDepthTab
+          studentId={studentId}
+          activeEnrollments={activeEnrollmentTabs}
+          topicFilter={searchParams.topic}
+          highlightId={searchParams.item}
+        />
+      )}
+
+      {tab === "overview" && (
+      <>
       {/* Enrollments */}
       <section>
         <h2 className="mb-2 text-lg font-semibold">Enrolments</h2>
@@ -252,6 +308,8 @@ export default async function StudentProfile({
           for full billing history.
         </p>
       </section>
+      </>
+      )}
     </div>
   );
 }

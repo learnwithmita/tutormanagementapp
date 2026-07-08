@@ -20,6 +20,15 @@ export type BillStatus =
 export type PaymentMethod = "PAYNOW" | "CASH" | "BANK_TRANSFER" | "OTHER";
 export type ReceiptStatus = "ISSUED" | "SUPERSEDED";
 
+// ---- Progress (Milestone 8) ----
+export type WorkItemType = "NOTES" | "PRACTICE";
+export type ProgressStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "DONE"
+  | "MARKED"
+  | "COMPLETED";
+
 export interface Tutor {
   id: string;
   name: string | null;
@@ -197,4 +206,106 @@ export interface StudentSummary {
   paid_cents: number;
   outstanding_cents: number;
   distinct_rates_cents: number[];
+}
+
+// ---- Progress tables ----
+export interface Topic {
+  id: string;
+  tutor_id: string;
+  level: string;
+  subject: string;
+  name: string;
+  sort_order: number;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TopicCheck {
+  id: string;
+  tutor_id: string;
+  enrollment_id: string;
+  topic_id: string;
+  checked: boolean;
+  checked_at: string | null;
+  remark: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkItem {
+  id: string;
+  tutor_id: string;
+  enrollment_id: string;
+  type: WorkItemType;
+  topic_id: string;
+  title: string | null;
+  status: ProgressStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  remark: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PracticePaper {
+  id: string;
+  tutor_id: string;
+  enrollment_id: string;
+  school: string;
+  level: string;
+  exam_type: string;
+  year: number;
+  status: ProgressStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  score: number | null;
+  max_score: number | null;
+  remark: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EnrollmentChecklist {
+  enrollment_id: string;
+  total_topics: number;
+  checked_topics: number;
+  pct: number;
+}
+
+export interface TopicBadges {
+  enrollment_id: string;
+  topic_id: string;
+  notes_total: number;
+  notes_in_progress: number;
+  notes_completed: number;
+  practice_total: number;
+  practice_in_progress: number;
+  practice_done: number;
+  practice_marked: number;
+  practice_completed: number;
+}
+
+export interface EnrollmentPapers {
+  enrollment_id: string;
+  papers_total: number;
+  papers_completed: number;
+  avg_pct: number | null;
+  best_pct: number | null;
+  latest_pct: number | null;
+}
+
+export interface MarkingQueueItem {
+  tutor_id: string;
+  kind: "WORK_ITEM" | "PAPER";
+  item_id: string;
+  enrollment_id: string;
+  student_name: string;
+  level: string;
+  subject: string;
+  label: string;
+  status: ProgressStatus;
+  days_in_status: number;
 }

@@ -16,6 +16,7 @@ const ITEMS: Item[] = [
   { href: "/", label: "This week", icon: icon("M3 10.5 12 4l9 6.5M5 9.5V20h14V9.5") },
   { href: "/calendar", label: "Calendar", icon: icon("M4 5h16v16H4zM4 9h16M8 3v4M16 3v4") },
   { href: "/students", label: "Students", icon: icon("M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM21 20v-1a4 4 0 0 0-3-3.8M16.5 4.2a3.5 3.5 0 0 1 0 6.6") },
+  { href: "/syllabus", label: "Syllabus", icon: icon("M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM19 19v2H6M8 7h8M8 11h6") },
   { href: "/money", label: "Money", icon: icon("M12 2v20M17 5.5C17 4 15.4 3 12.5 3S8 4.2 8 6s2 2.5 4.5 3 4.5 1.4 4.5 3.4S15 16 12 16 8 15 8 13.2") },
   { href: "/settings", label: "Settings", icon: icon("M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L16 2H8l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 3 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L8 22h8l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z") },
 ];
@@ -65,7 +66,7 @@ export default function Nav() {
       </header>
 
       {/* Mobile: floating bottom tab bar */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-line bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl sm:hidden">
         {ITEMS.map((it) => {
           const active = isActive(pathname, it.href);
           return (

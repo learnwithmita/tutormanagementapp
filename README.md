@@ -126,7 +126,43 @@ DRAFT ──(Mark as sent)──▶ SENT ──(payment < total)──▶ PARTIA
 
 ---
 
-## 5. Project layout
+## 5. Progress (two layers)
+
+Progress tracking has two deliberately separate layers. **They never touch each
+other automatically** — the checkbox is manual, work items never auto-check a
+topic, and the only bridge is the badges shown on the checklist.
+
+**Layer 1 — Topic checklist (quick).** Each syllabus is a list of topics keyed
+by `(level, subject)`. On a student's **Progress** tab you tick topics off — one
+tap each — to see at a glance how far through the syllabus they are. Archiving a
+topic removes it from checklists *and* from the percentage denominator, so
+nobody's progress ever drops.
+
+**Layer 2 — In-depth work log.** On the **In-depth** tab you log individual
+pieces of work, choosing the type first:
+
+- **Notes** → assigned to a topic. `NOT_STARTED → IN_PROGRESS → COMPLETED`.
+- **Practice** → assigned to a topic. `NOT_STARTED → IN_PROGRESS → DONE → MARKED → COMPLETED`.
+- **Practice paper** → *not* topic-assigned; keyed by school, level, paper type,
+  year, and carries a score. Same 5-stage pipeline.
+
+Every item stamps **started/completed** dates on transitions (always editable
+for backfilling); moving a status backward clears the dates that no longer
+apply.
+
+### The marking pipeline
+
+```
+DONE   = the student has finished it → it's waiting for ME to mark
+MARKED = I've marked it → we review the corrections together next lesson
+COMPLETED = corrections reviewed
+```
+
+The **Marking queue** (on the This-week home page and at `/marking`) lists every
+Practice item and paper currently in **DONE** or **MARKED** across all students,
+so nothing waiting on you slips through.
+
+## 6. Project layout
 
 ```
 app/(app)/            authenticated app (Today, Calendar, Students, Money, Settings)
