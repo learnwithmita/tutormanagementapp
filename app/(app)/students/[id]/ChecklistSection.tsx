@@ -9,6 +9,15 @@ import {
 } from "./checklist-actions";
 import { formatDate } from "@/lib/format";
 
+function todaySGT(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export type ChecklistTopic = {
   topicId: string;
   name: string;
@@ -76,7 +85,7 @@ function TopicRow({
   function toggle() {
     const next = !checked;
     setChecked(next); // optimistic
-    setCheckedAt(next ? new Date().toISOString().slice(0, 10) : null);
+    setCheckedAt(next ? todaySGT() : null);
     startTransition(() =>
       toggleTopicCheck({ studentId, enrollmentId, topicId: topic.topicId, checked: next }).then(() => {}),
     );
