@@ -3,8 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireUserId } from "@/lib/auth";
-import { formatLessonRange } from "@/lib/format";
-import type { LessonStatus, TeachingMode } from "@/lib/database.types";
+import { formatLessonRange, formatDate } from "@/lib/format";
+import { lessonAmountCents } from "@/lib/money";
+import type { LessonStatus, PaymentMethod, TeachingMode } from "@/lib/database.types";
+
+function sgtDateOnly(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
 
 export type FrozenBill = {
   billId: string;
@@ -244,4 +254,95 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonResu
   }
   revalidateLessonViews();
   return { ok: true, id: data.id };
+}
+
+// Record a per-lesson payment: creates a one-lesson bill (auto-SENT), links the
+// lesson, and records the payment against it so it flows through Money, the
+// payer ledger, income totals and receipts — just like any other bill. Used for
+// PER_LESSON payers straight after completing a lesson.
+export async function recordLessonPayment(
+  lessonId: string,
+  input: { amountCents: number; paidAt: string; method: PaymentMethod },
+): Promise<LessonResult> {
+  const tutorId = await requireUserId();
+  const supabase = await createClient();
+
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    return { ok: false, error: "Enter an amount greater than $0." };
+  }
+
+  const { data: lesson } = await supabase
+    .from("lessons")
+    .select(
+      "id,starts_at,duration_min,rate_cents,status, enrollment:enrollments(student:students(payer:payers(id)))",
+    )
+    .eq("id", lessonId)
+    .maybeSingle();
+  if (!lesson) return { ok: false, error: "Lesson not found." };
+
+  const enr: any = Array.isArray((lesson as any).enrollment)
+    ? (lesson as any).enrollment[0]
+    : (lesson as any).enrollment;
+  const stu: any = enr && (Array.isArray(enr.student) ? enr.student[0] : enr.student);
+  const payer: any = stu && (Array.isArray(stu.payer) ? stu.payer[0] : stu.payer);
+  if (!payer) return { ok: false, error: "Couldn't find the payer for this lesson." };
+
+  // Don't double-bill: refuse if the lesson is already on a non-void bill.
+  const { data: existing } = await supabase
+    .from("bill_lessons")
+    .select("bill_id, bills!inner(status)")
+    .eq("lesson_id", lessonId)
+    .neq("bills.status", "VOID")
+    .limit(1);
+  if (existing && existing.length > 0) {
+    return { ok: false, error: "This lesson is already on a bill." };
+  }
+
+  const total = lessonAmountCents(lesson.duration_min, lesson.rate_cents);
+  const dateOnly = sgtDateOnly(lesson.starts_at);
+  const label = `Lesson — ${formatDate(lesson.starts_at)}`;
+
+  const { data: bill, error: billErr } = await supabase
+    .from("bills")
+    .insert({
+      tutor_id: tutorId,
+      payer_id: payer.id,
+      period_label: label,
+      period_start: dateOnly,
+      period_end: dateOnly,
+      status: "SENT",
+      sent_at: new Date().toISOString(),
+      message_text: "Per-lesson payment recorded at completion.",
+    })
+    .select("id")
+    .single();
+  if (billErr || !bill) {
+    return { ok: false, error: "Something went wrong — nothing was saved. Try again." };
+  }
+
+  const { error: linkErr } = await supabase
+    .from("bill_lessons")
+    .insert({ tutor_id: tutorId, bill_id: bill.id, lesson_id: lessonId });
+  if (linkErr) {
+    await supabase.from("bills").delete().eq("id", bill.id);
+    return { ok: false, error: "This lesson is already on a bill." };
+  }
+
+  await supabase.from("payments").insert({
+    tutor_id: tutorId,
+    payer_id: payer.id,
+    bill_id: bill.id,
+    amount_cents: input.amountCents,
+    paid_at: input.paidAt,
+    method: input.method,
+    note: "Paid at lesson",
+  });
+
+  await supabase
+    .from("bills")
+    .update({ status: input.amountCents >= total ? "PAID" : "PARTIALLY_PAID" })
+    .eq("id", bill.id);
+
+  revalidateLessonViews();
+  return { ok: true };
 }

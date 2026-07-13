@@ -9,15 +9,17 @@ import {
   rescheduleLesson,
   deleteLesson,
   updateLesson,
+  recordLessonPayment,
   type LessonResult,
   type FrozenBill,
 } from "@/app/(app)/lessons/actions";
 import { skipLesson, editRecurringFuture } from "@/app/(app)/lessons/recurring";
 import FrozenBillDialog from "@/components/FrozenBillDialog";
 import LessonStatusBadge from "@/components/LessonStatusBadge";
-import { centsToInput, parseDollarsToCents } from "@/lib/money";
+import { centsToInput, parseDollarsToCents, lessonAmountCents } from "@/lib/money";
+import { todaySGT } from "@/lib/format";
 import type { LessonVM } from "@/lib/lesson-vm";
-import type { TeachingMode } from "@/lib/database.types";
+import type { PaymentMethod, TeachingMode } from "@/lib/database.types";
 
 // Singapore is always +08:00 (no DST).
 function sgtIso(date: string, time: string): string {
@@ -52,9 +54,16 @@ export default function LessonActions({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [frozen, setFrozen] = useState<FrozenBill | null>(null);
-  const [panel, setPanel] = useState<"none" | "complete" | "cancel" | "reschedule" | "edit">(
-    "none",
+  const [panel, setPanel] = useState<
+    "none" | "complete" | "cancel" | "reschedule" | "edit" | "pay"
+  >("none");
+
+  // Per-lesson payment fields
+  const [payAmount, setPayAmount] = useState(
+    centsToInput(lessonAmountCents(lesson.durationMin, lesson.rateCents)),
   );
+  const [payDate, setPayDate] = useState(todaySGT());
+  const [payMethod, setPayMethod] = useState<PaymentMethod>("PAYNOW");
 
   const [notes, setNotes] = useState("");
   const dateStr = sgtDate(lesson.startsAt);
@@ -89,20 +98,100 @@ export default function LessonActions({
     <div className="mt-2">
       {error && <div className="banner banner-error mb-2">{error}</div>}
 
-      {/* COMPLETED: note preview + Undo */}
+      {/* COMPLETED: note preview + per-lesson payment + Undo */}
       {isCompleted && (
-        <div className="flex items-center gap-2">
-          <span className="text-green-700">✓ Completed</span>
-          {lesson.notes && (
-            <span className="truncate text-xs text-gray-500">— {lesson.notes}</span>
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-green-700">✓ Completed</span>
+            {lesson.notes && (
+              <span className="truncate text-xs text-gray-500">— {lesson.notes}</span>
+            )}
+
+            {/* Per-lesson payment status / action */}
+            {lesson.paid ? (
+              <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-2xs font-medium text-emerald-800">
+                💰 Paid
+              </span>
+            ) : lesson.billed ? (
+              <span className="chip">On a bill</span>
+            ) : lesson.payerBillingCycle === "PER_LESSON" && panel === "none" ? (
+              <button
+                className="btn btn-sm"
+                disabled={pending}
+                onClick={() => setPanel("pay")}
+              >
+                Record payment
+              </button>
+            ) : null}
+
+            {/* Undo only while the lesson isn't on a bill */}
+            {!lesson.billed && (
+              <button
+                className="btn ml-auto"
+                disabled={pending}
+                onClick={() => run(() => undoComplete(lesson.id))}
+              >
+                Undo
+              </button>
+            )}
+          </div>
+
+          {/* Payment panel */}
+          {panel === "pay" && (
+            <div className="mt-2 flex flex-wrap items-end gap-2 border border-gray-300 p-2">
+              <div>
+                <label className="label">Amount ($)</label>
+                <input
+                  className="input w-24"
+                  inputMode="decimal"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">Date</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label">Method</label>
+                <select
+                  className="input"
+                  value={payMethod}
+                  onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
+                >
+                  <option value="PAYNOW">PayNow</option>
+                  <option value="CASH">Cash</option>
+                  <option value="BANK_TRANSFER">Bank transfer</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <button
+                className="btn btn-primary"
+                disabled={pending}
+                onClick={() => {
+                  const cents = parseDollarsToCents(payAmount);
+                  if (cents == null || cents <= 0) return setError("Enter a valid amount.");
+                  run(() =>
+                    recordLessonPayment(lesson.id, {
+                      amountCents: cents,
+                      paidAt: payDate,
+                      method: payMethod,
+                    }),
+                  );
+                }}
+              >
+                Save payment
+              </button>
+              <button className="btn" onClick={() => setPanel("none")}>
+                Cancel
+              </button>
+            </div>
           )}
-          <button
-            className="btn ml-auto"
-            disabled={pending}
-            onClick={() => run(() => undoComplete(lesson.id))}
-          >
-            Undo
-          </button>
         </div>
       )}
 
