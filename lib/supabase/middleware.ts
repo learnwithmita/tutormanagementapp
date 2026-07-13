@@ -7,7 +7,11 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 // Public routes: /login, /signup, and Next internals/assets. Everything else
 // requires a session; unauthenticated users are redirected to /login with a
 // ?redirect=<original path> so we can return them after login.
-const PUBLIC_PATHS = ["/login", "/signup"];
+// Routes that never require a session.
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password"];
+// Of those, only these should bounce an already-signed-in user to home.
+// (Not /reset-password: the recovery link itself creates a temporary session.)
+const AUTH_ONLY_PATHS = ["/login", "/signup"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -49,8 +53,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed-in user hitting an auth page → send to home.
-  if (user && isPublic) {
+  // Signed-in user hitting the login/signup pages → send to home. (Recovery
+  // sessions on /reset-password are left alone.)
+  const isAuthOnly = AUTH_ONLY_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+  if (user && isAuthOnly) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

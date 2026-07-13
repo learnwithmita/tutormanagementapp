@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { isPasswordValid } from "@/lib/password";
+import PasswordInput from "@/components/PasswordInput";
+import PasswordChecklist from "@/components/PasswordChecklist";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -19,8 +22,8 @@ export default function SignupPage() {
     setError(null);
     setInfo(null);
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (!isPasswordValid(password)) {
+      setError("Please meet all the password requirements below.");
       return;
     }
     if (password !== confirm) {
@@ -84,31 +87,23 @@ export default function SignupPage() {
           <label className="label" htmlFor="password">
             Password
           </label>
-          <input
-            id="password"
-            type="password"
-            className="input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="new-password"
-            required
-          />
+          <PasswordInput id="password" value={password} onChange={setPassword} />
+          <PasswordChecklist password={password} />
         </div>
         <div>
           <label className="label" htmlFor="confirm">
             Confirm password
           </label>
-          <input
-            id="confirm"
-            type="password"
-            className="input"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            autoComplete="new-password"
-            required
-          />
+          <PasswordInput id="confirm" value={confirm} onChange={setConfirm} />
+          {confirm.length > 0 && confirm !== password && (
+            <p className="field-error">Passwords do not match.</p>
+          )}
         </div>
-        <button type="submit" className="btn btn-primary w-full" disabled={busy}>
+        <button
+          type="submit"
+          className="btn btn-primary w-full"
+          disabled={busy || !isPasswordValid(password) || password !== confirm}
+        >
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>
