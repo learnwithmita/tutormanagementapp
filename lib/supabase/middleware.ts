@@ -8,7 +8,13 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
 // requires a session; unauthenticated users are redirected to /login with a
 // ?redirect=<original path> so we can return them after login.
 // Routes that never require a session.
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+];
 // Of those, only these should bounce an already-signed-in user to home.
 // (Not /reset-password: the recovery link itself creates a temporary session.)
 const AUTH_ONLY_PATHS = ["/login", "/signup"];
