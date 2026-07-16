@@ -2,9 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireUserId } from "@/lib/auth";
 import { todaySGT } from "@/lib/format";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, lessonAmountCents } from "@/lib/money";
 import { formatHours } from "@/lib/format";
-import { monthRange, candidateStatuses } from "@/lib/billing-util";
+import { monthRange, candidateStatuses, BILLABLE_STATUSES } from "@/lib/billing-util";
 import type { MonthlySummary } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
@@ -31,23 +31,31 @@ export default async function MoneyPage({
   const tutorId = await requireUserId();
   const supabase = await createClient();
 
-  const [{ data: summaryData }, { data: billsData }, { data: totalsData }, { data: lessonRows }, { data: billedRows }] =
-    await Promise.all([
-      supabase.rpc("v_monthly_summary", { p_tutor: tutorId, p_month: `${month}-01` }),
-      supabase
-        .from("bills")
-        .select("id,payer_id,period_label,status,sent_at,created_at, payer:payers(name)")
-        .order("created_at", { ascending: false }),
-      supabase.from("v_bill_totals").select("bill_id,total_cents,paid_cents,outstanding_cents"),
-      supabase
-        .from("lessons")
-        .select(
-          "id,status, enrollment:enrollments(student:students(payer:payers(id,name,billing_basis,archived_at)))",
-        )
-        .gte("starts_at", startIso)
-        .lt("starts_at", endIso),
-      supabase.from("bill_lessons").select("lesson_id, bills!inner(status)").neq("bills.status", "VOID"),
-    ]);
+  const [
+    { data: summaryData },
+    { data: billsData },
+    { data: totalsData },
+    { data: lessonRows },
+    { data: billedRows },
+    { data: allBillable },
+  ] = await Promise.all([
+    supabase.rpc("v_monthly_summary", { p_tutor: tutorId, p_month: `${month}-01` }),
+    supabase
+      .from("bills")
+      .select("id,payer_id,period_label,status,sent_at,created_at, payer:payers(name)")
+      .order("created_at", { ascending: false }),
+    supabase.from("v_bill_totals").select("bill_id,total_cents,paid_cents,outstanding_cents"),
+    supabase
+      .from("lessons")
+      .select(
+        "id,status, enrollment:enrollments(student:students(payer:payers(id,name,billing_basis,archived_at)))",
+      )
+      .gte("starts_at", startIso)
+      .lt("starts_at", endIso),
+    supabase.from("bill_lessons").select("lesson_id, bills!inner(status)").neq("bills.status", "VOID"),
+    // All billable lessons (any date) — for "you're owed" incl. unbilled ones.
+    supabase.from("lessons").select("id,duration_min,rate_cents").in("status", BILLABLE_STATUSES),
+  ]);
 
   const summary: MonthlySummary | undefined = Array.isArray(summaryData)
     ? summaryData[0]
@@ -99,8 +107,45 @@ export default async function MoneyPage({
     .sort((a, b) => (a.sentAt ?? "").localeCompare(b.sentAt ?? ""));
   const recent = bills.filter((b) => b.status === "PAID" || b.status === "VOID").slice(0, 20);
 
+  // "You're owed" (all time): money for taught lessons you haven't collected.
+  //   awaiting  = outstanding on bills already sent
+  //   notBilled = taught lessons not on any sent bill (unbilled + drafts)
+  const awaitingCents = awaiting.reduce((s, b) => s + b.outstanding, 0);
+  const draftCents = drafts.reduce((s, b) => s + b.outstanding, 0);
+  const unbilledCents = (allBillable ?? []).reduce(
+    (s: number, l: any) =>
+      billedLessonIds.has(l.id) ? s : s + lessonAmountCents(l.duration_min, l.rate_cents),
+    0,
+  );
+  const notBilledCents = unbilledCents + draftCents;
+  const owedCents = awaitingCents + notBilledCents;
+
   return (
     <div className="space-y-6">
+      {/* You're owed — all-time uncollected for work already done */}
+      <div
+        className={`card ${owedCents > 0 ? "border-red-200 bg-red-50" : ""}`}
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+          You’re owed (all time)
+        </div>
+        <div
+          className={`text-3xl font-semibold tracking-tight ${
+            owedCents > 0 ? "text-red-700" : "text-emerald-700"
+          }`}
+        >
+          {formatMoney(owedCents)}
+        </div>
+        {owedCents > 0 ? (
+          <div className="mt-1 text-sm text-ink-soft">
+            {formatMoney(awaitingCents)} awaiting payment on sent bills ·{" "}
+            {formatMoney(notBilledCents)} for taught lessons not yet billed
+          </div>
+        ) : (
+          <div className="mt-1 text-sm text-ink-soft">All caught up 🎉</div>
+        )}
+      </div>
+
       {/* Month selector + summary */}
       <div>
         <div className="mb-2 flex items-center gap-2">
