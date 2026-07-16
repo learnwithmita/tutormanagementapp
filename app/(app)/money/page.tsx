@@ -37,7 +37,6 @@ export default async function MoneyPage({
     { data: totalsData },
     { data: lessonRows },
     { data: billedRows },
-    { data: allBillable },
   ] = await Promise.all([
     supabase.rpc("v_monthly_summary", { p_tutor: tutorId, p_month: `${month}-01` }),
     supabase
@@ -48,13 +47,11 @@ export default async function MoneyPage({
     supabase
       .from("lessons")
       .select(
-        "id,status, enrollment:enrollments(student:students(payer:payers(id,name,billing_basis,archived_at)))",
+        "id,status,duration_min,rate_cents, enrollment:enrollments(student:students(payer:payers(id,name,billing_basis,archived_at)))",
       )
       .gte("starts_at", startIso)
       .lt("starts_at", endIso),
     supabase.from("bill_lessons").select("lesson_id, bills!inner(status)").neq("bills.status", "VOID"),
-    // All billable lessons (any date) — for "you're owed" incl. unbilled ones.
-    supabase.from("lessons").select("id,duration_min,rate_cents").in("status", BILLABLE_STATUSES),
   ]);
 
   const summary: MonthlySummary | undefined = Array.isArray(summaryData)
@@ -69,6 +66,12 @@ export default async function MoneyPage({
   );
 
   const billedLessonIds = new Set((billedRows ?? []).map((r: any) => r.lesson_id));
+  // lesson_id -> status of its (single) non-void bill.
+  const billStatusByLesson = new Map<string, string>();
+  for (const r of billedRows ?? []) {
+    const b: any = Array.isArray((r as any).bills) ? (r as any).bills[0] : (r as any).bills;
+    if (b) billStatusByLesson.set((r as any).lesson_id, b.status);
+  }
 
   // Needs billing: count unbilled billable candidates per payer.
   const needByPayer = new Map<string, { name: string; count: number }>();
@@ -107,60 +110,63 @@ export default async function MoneyPage({
     .sort((a, b) => (a.sentAt ?? "").localeCompare(b.sentAt ?? ""));
   const recent = bills.filter((b) => b.status === "PAID" || b.status === "VOID").slice(0, 20);
 
-  // "You're owed" (all time): money for taught lessons you haven't collected.
-  //   awaiting  = outstanding on bills already sent
-  //   notBilled = taught lessons not on any sent bill (unbilled + drafts)
-  const awaitingCents = awaiting.reduce((s, b) => s + b.outstanding, 0);
-  const draftCents = drafts.reduce((s, b) => s + b.outstanding, 0);
-  const unbilledCents = (allBillable ?? []).reduce(
-    (s: number, l: any) =>
-      billedLessonIds.has(l.id) ? s : s + lessonAmountCents(l.duration_min, l.rate_cents),
-    0,
-  );
-  const notBilledCents = unbilledCents + draftCents;
+  // "You're owed" for the SELECTED MONTH: value of lessons taught this month
+  // that you haven't collected yet.
+  //   awaiting  = taught lessons on a sent (SENT/PARTIALLY_PAID) bill
+  //   notBilled = taught lessons not yet on a sent bill (unbilled or draft)
+  // A lesson on a PAID bill is collected and excluded.
+  let awaitingCents = 0;
+  let notBilledCents = 0;
+  for (const l of lessonRows ?? []) {
+    if (!BILLABLE_STATUSES.includes(l.status)) continue;
+    const amount = lessonAmountCents(l.duration_min, l.rate_cents);
+    const billStatus = billStatusByLesson.get(l.id) ?? null;
+    if (billStatus === "PAID") continue; // collected
+    if (billStatus === "SENT" || billStatus === "PARTIALLY_PAID") awaitingCents += amount;
+    else notBilledCents += amount; // unbilled or on a draft
+  }
   const owedCents = awaitingCents + notBilledCents;
 
   return (
     <div className="space-y-6">
-      {/* You're owed — all-time uncollected for work already done */}
-      <div
-        className={`card ${owedCents > 0 ? "border-red-200 bg-red-50" : ""}`}
-      >
-        <div className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-          You’re owed (all time)
-        </div>
-        <div
-          className={`text-3xl font-semibold tracking-tight ${
-            owedCents > 0 ? "text-red-700" : "text-emerald-700"
-          }`}
-        >
-          {formatMoney(owedCents)}
-        </div>
-        {owedCents > 0 ? (
-          <div className="mt-1 text-sm text-ink-soft">
-            {formatMoney(awaitingCents)} awaiting payment on sent bills ·{" "}
-            {formatMoney(notBilledCents)} for taught lessons not yet billed
-          </div>
-        ) : (
-          <div className="mt-1 text-sm text-ink-soft">All caught up 🎉</div>
-        )}
-      </div>
-
-      {/* Month selector + summary */}
+      {/* Month selector + you're-owed + summary */}
       <div>
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-3 flex items-center gap-2">
           <Link href={`/money?m=${prevMonth}`} className="btn">‹</Link>
           <h1 className="min-w-40 text-center text-xl font-semibold">{label}</h1>
           <Link href={`/money?m=${nextMonth}`} className="btn">›</Link>
         </div>
+
+        {/* Uncollected for the selected month */}
+        <div className={`card mb-3 ${owedCents > 0 ? "border-red-200 bg-red-50" : ""}`}>
+          <div className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+            You’re owed for {label}
+          </div>
+          <div
+            className={`text-3xl font-semibold tracking-tight ${
+              owedCents > 0 ? "text-red-700" : "text-emerald-700"
+            }`}
+          >
+            {formatMoney(owedCents)}
+          </div>
+          {owedCents > 0 ? (
+            <div className="mt-1 text-sm text-ink-soft">
+              {formatMoney(awaitingCents)} awaiting payment on sent bills ·{" "}
+              {formatMoney(notBilledCents)} for taught lessons not yet billed
+            </div>
+          ) : (
+            <div className="mt-1 text-sm text-ink-soft">
+              Everything taught this month is collected 🎉
+            </div>
+          )}
+        </div>
+
         {summary && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="Lessons" value={String(summary.lesson_count)} />
             <Stat label="Hours" value={formatHours(summary.teaching_hours)} />
             <Stat label="Earned" value={formatMoney(summary.earned_income_cents)} />
-            <Stat label="Billed" value={formatMoney(summary.billed_cents)} />
             <Stat label="Paid" value={formatMoney(summary.paid_cents)} />
-            <Stat label="Outstanding" value={formatMoney(summary.outstanding_cents)} red={summary.outstanding_cents > 0} />
           </div>
         )}
       </div>
